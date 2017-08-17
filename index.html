@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=750,user-scalable=0;">
+    <style>
+        *{margin:0;padding:0;}
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+        }
+    </style>
+    <title>Demo</title>
+    <script src="http://guangdong.sinaimg.cn/subject/2017/lib/js/fixViewport750.js"></script>
+    <script src="http://guangdong.sinaimg.cn/subject/2017/lib/js/easeljs.min.js"></script>
+    <script src="http://guangdong.sinaimg.cn/subject/2017/lib/js/preloadjs.min.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+    function Game(config) {
+        this.stage = new createjs.Stage(config.id);
+        this.x = config.x ? config.x : 0;
+        this.y = config.y ? config.y : 0;
+        this.width = config.width ? config.width : window.innerWidth;
+        this.height = config.height ? config.height : window.innerHeight;
+        this.stage.canvas.width = this.width;
+        this.stage.canvas.height = this.height;
+        this.showFPS = config.showFPS ? true : false;
+        this.sourceData = config.sources || "";
+        this.objects = {};
+    }
+    Game.prototype = {
+        constructor: Game,
+        preload: function(callback) {
+            var _this = this;
+            this.sources = new createjs.LoadQueue(false);
+            this.sources.addEventListener('progress', function(event) {
+                console.log(Math.floor(event.progress*100) + "%");
+            });
+            this.sources.addEventListener('error', function(event) {
+                console.log(event);
+            });
+            this.sources.addEventListener('complete', function(event) {
+                callback && callback();
+            });
+            this.sources.loadManifest(this.sourceData);
+        },
+        init: function(param) {
+            console.log();
+            if(param instanceof Function) {
+                var callback = param;
+            }else if(param) {
+                var model = param.model;
+                var controller = param.controller;
+                var callback = param.callback;
+            }
+            var _this = this;
+            this.paused = true;
+            if(!this.model && model) {
+                this.model = model;
+            }
+            if(!this.controller && controller) {
+                this.controller = controller;
+            }
+            createjs.Touch.enable(this.stage);
+            if(!this.sources) {
+                this.preload(function(){
+                    _this.render();
+                    callback && callback();
+                });
+            }else {
+                this.render();
+                callback && callback();
+            }
+        },
+        render: function() {
+            if(this.model) {
+                for(var i = 0; i < this.model.length; i++) {
+                    this.addObject(this.model[i]);
+                }
+            }
+            
+            if(this.controller) {
+                this.controller();
+            }
+            if(this.showFPS) {
+                this.setFPS();
+            }
+            this.stage.update();
+        },
+        addObject: function(objectData) {
+            var id = objectData.id;
+            var parent = this.objects[objectData.parent] || this.stage;
+            if(objectData.object){
+                this.objects[id] = objectData.object;
+            }else if(objectData.spriteData){
+                var spriteData = {};
+                spriteData.images = [];
+                for(var j = 0; j < objectData.spriteData.images.length; j++) {
+                    spriteData.images.push(this.sources.getResult(objectData.spriteData.images[j]));
+                }
+                spriteData.frames = objectData.spriteData.frames;
+                spriteData.animations = objectData.spriteData.animations;
+       
+                var spriteSheet = new createjs.SpriteSheet(spriteData);
+                this.objects[id] = new createjs.Sprite(spriteSheet);
+            }else if(objectData.shapeData){
+                this.objects[id] = new createjs.Shape();
+                for(var method in objectData.shapeData) {
+                    var param = objectData.shapeData[method]; 
+                    var arr = [];
+                    if(param instanceof Array) {
+                        arr = param;
+                    }else {
+                        arr.push(param);
+                    }
+                    this.objects[id].graphics[method].apply(this.objects[id].graphics, arr);
+                }
+            }else if(objectData.textData){
+                this.objects[id] = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
+            }else {
+                var image = objectData.image || this.sources.getResult(id);
+                if(image) {
+                    this.objects[id] = new createjs.Bitmap(image);
+                }else {
+                    this.objects[id] = new createjs.Container();
+                }
+                
+            }
+            if(objectData.data) {
+                for(var key in objectData.data) {
+                    this.objects[id][key] = objectData.data[key];
+                }
+            }
+            parent.addChild(this.objects[id]);
+        },  
+        getBounds: function() {
+            return {x: this.x, y: this.y, width: this.width, height: this.height}
+        },
+        start: function() {
+            var _this = this;
+            this.paused = false;
+            createjs.Ticker.timingMode = createjs.Ticker.RAF;
+            createjs.Ticker.setFPS(60);
+            createjs.Ticker.addEventListener("tick", this._handleTick = function(event) {
+                if(!_this.paused) {
+                    _this.stage.update();
+                }
+                if(_this.showFPS) {
+                    _this.fpstext.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
+                }
+            });
+        },
+        pause: function() {
+            this.paused = true;
+        },
+        resume: function() {
+            this.paused = false;
+        },
+        stop: function() {
+            this.paused = true;
+            createjs.Ticker.removeEventListener("tick", this._handleTick);
+            this.stage.removeAllChildren();
+            this.objects = {};
+        },
+        restart: function() {
+            this.stop();
+            this.init();
+            this.start();
+        },
+        setFPS: function() {
+            this.fpstext = new createjs.Text("","20px Arial","#f00");
+            this.fpstext.x = 0;
+            this.fpstext.y = this.height - 24;
+            this.stage.addChild(this.fpstext);
+        }
+    };
+
+    function MyGame(config) {
+        this.Game_constructor(config);
+        this.sourceData = [
+            {src: "images/load_hz.png", id: "load_hz"},
+            {src: "images/sec_dean_sky.png", id: "bg_sky"},
+            {src: "images/sec_dean_star.png", id: "bg_star"},
+            {src: "images/sec_dean_logo.png", id: "title"},
+            {src: "images/sec_dean_mountain.png", id: "mountain"},
+            {src: "images/sec_dean_light_01.png", id: "light_01"},
+            {src: "images/sec_dean_light_02.png", id: "light_02"},
+            {src: "images/sec_dean_light_03.png", id: "light_03"},
+            {src: "images/sec_dean_light_04.png", id: "light_04"},
+            {src: "images/sec_dean_light.png", id: "light"},
+            {src: "images/sec_dean_person_sprite.png", id: "person"},
+            {src: "images/sec_dean_txt_01.png", id: "txt_01"},
+            {src: "images/sec_dean_txt_02.png", id: "txt_02"},
+            {src: "images/sec_dean_txt_03.png", id: "txt_03"},
+            {src: "images/sec_dean_txt_04.png", id: "txt_04"},
+            {src: "images/sec_dean_txt_04_heard.png", id: "txt_04_heard"},
+            {src: "images/sec_dean_txt_05.png", id: "txt_05"},
+            {src: "images/sec_dean_txt_06.png", id: "txt_06"},
+            {src: "images/sec_dean_man_01_sprite.png", id: "man_01"},
+            {src: "images/sec_dean_man_02_sprite.png", id: "man_02"},
+            {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
+        ];
+        this.model = [
+            {
+                id: "bg"
+            },{
+                id: "bg_sky",
+                parent: "bg"
+            },{
+                id: "bg_star",
+                parent: "bg",
+                data: {
+                    x: 437
+                }
+            },{
+                id: "iland"
+            },{
+                id: "mountain",
+                parent: "iland"
+            },{
+                id: "light_01",
+                parent: "iland",
+                data: {
+                    x: 422,
+                    y: 272
+                }
+            },{
+                id: "light_02",
+                parent: "iland",
+                data: {
+                    x: 422,
+                    y: 818
+                }
+            },{
+                id: "light_03",
+                parent: "iland",
+                data: {
+                    x: 417,
+                    y: 1443
+                }
+            },{
+                id: "light_04",
+                parent: "iland",
+                data: {
+                    x: 422,
+                    y: 2008
+                }
+            },{
+                id: "light",
+                parent: "iland"
+            },{
+                id: "txt_01",
+                parent: "iland",
+                data: {
+                    x: 545,
+                    y: 38
+                }
+            },{
+                id: "txt_02",
+                parent: "iland",
+                data: {
+                    x: 490,
+                    y: 620
+                }
+            },{
+                id: "txt_03",
+                parent: "iland",
+                data: {
+                    x: 584,
+                    y: 909
+                }
+            },{
+                id: "txt_04_wrap",
+                parent: "iland",
+                data: {
+                    x: 478,
+                    y: 1228
+                }
+            },{
+                id: "txt_04",
+                parent: "txt_04_wrap"
+            },{
+                id: "txt_04_heard",
+                parent: "txt_04_wrap",
+                data: {
+                    x: 12,
+                    y: 25
+                }
+            },{
+                id: "txt_05",
+                parent: "iland",
+                data: {
+                    x: 529,
+                    y: 1820
+                }
+            },{
+                id: "txt_06",
+                parent: "iland",
+                data: {
+                    x: 512,
+                    y: 2179
+                }
+            },{
+                id: "man_01",
+                parent: "iland",
+                spriteData: {
+                    images: ["man_01"],
+                    frames: {
+                        width: 245.25,
+                        height: 200
+                    },
+                    animations: {
+                        jump: [0, 7, "jump", 0.15]
+                    }
+                },
+                data: {
+                    x: 99,
+                    y: 718
+                }
+            },{
+                id: "man_02",
+                parent: "iland",
+                spriteData: {
+                    images: ["man_02"],
+                    frames: {
+                        width: 257.5,
+                        height: 210
+                    },
+                    animations: {
+                        jump: [0, 7, "jump", 0.15]
+                    }
+                },
+                data: {
+                    x: 99,
+                    y: 1228
+                }
+            },{
+                id: "man_03",
+                parent: "iland",
+                spriteData: {
+                    images: ["man_03"],
+                    frames: {
+                        width: 261.125,
+                        height: 213
+                    },
+                    animations: {
+                        jump: [0, 7, "jump", 0.15]
+                    }
+                },
+                data: {
+                    x: 95,
+                    y: 1889
+                }
+            },{
+                id: "title",
+                data: {
+                    x: 658,
+                    y: 44
+                }
+            },{
+                id: "person",
+                spriteData: {
+                    images: ["person"],
+                    frames: {
+                        width: 271,
+                        height: 178
+                    },
+                    animations: {
+                        run: [0, 9, "run", 0.15]
+                    }
+                },
+                data: {
+                    x: 22,
+                    y: -178
+                }
+            },{
+                id: "rect",
+                shapeData: {
+                    beginStroke: "#f00",
+                    drawRect: [0, 0, 48, 24]
+                },
+                data: {
+                    x: 0,
+                    y: 1334 - 24
+                }
+            }
+        ];
+    }
+    createjs.extend(MyGame, Game);
+    MyGame.prototype.controller = function() {
+        var _this = this;
+        var person = this.objects.person;
+        var iland = this.objects.iland;
+        var iland_desY = window.innerHeight - iland.getBounds().height;
+        var manData = [{
+            object: this.objects.man_01,
+            animating: false,
+            stop: false
+        },{
+            object: this.objects.man_02,
+            animating: false,
+            stop: false
+        },{
+            object: this.objects.man_03,
+            animating: false,
+            stop: false
+        }];
+
+        person.gotoAndPlay("run");
+        person.addEventListener("tick", function() {
+            for(var i = 0; i < manData.length; i++) {
+                if(!manData[i].animating && manData[i].object.y + iland.y <= person.y + person.getBounds().height) {
+                    manData[i].animating = true;
+                    manData[i].object.gotoAndPlay("jump");
+                }else if(manData[i].animating && !manData[i].stop && manData[i].object.y + iland.y <= -manData[i].object.getBounds().height) {
+                    manData[i].stop = true;
+                    manData[i].object.gotoAndStop("jump");
+                }
+            }
+
+            if(person.y < 178) {
+                person.y += 2;
+            }else if(iland.y > iland_desY){
+                iland.y -= 2;
+            }else if(person.y < window.innerHeight) {
+                person.y += 2;
+            }else {
+                person.removeAllEventListeners("tick");
+                _this.restart();
+            }
+        });
+    }
+    MyGame = createjs.promote(MyGame, "Game");
+    
+    var gameConfig = {
+        id: 'game',
+        width: 750,
+        height: 1334,
+        showFPS: true
+    };
+    var game = new MyGame(gameConfig);
+
+    game.init(function() {
+        game.start();
+    });
+    
+</script>
+</body>
+</html>
