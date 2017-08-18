@@ -15,10 +15,10 @@
             width: 100%;
         }
     </style>
-    <title>Demo</title>
-    <script src="http://guangdong.sinaimg.cn/subject/2017/lib/js/fixViewport750.js"></script>
-    <script src="http://guangdong.sinaimg.cn/subject/2017/lib/js/easeljs.min.js"></script>
-    <script src="http://guangdong.sinaimg.cn/subject/2017/lib/js/preloadjs.min.js"></script>
+    <title>creatjsDemo</title>
+    <script src="lib/js/fixViewport750/index.js"></script>
+    <script src="lib/js/EaselJS/lib/easeljs-0.8.2.min.js"></script>
+    <script src="lib/js/PreloadJS/lib/preloadjs-0.6.2.min.js"></script>
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -185,7 +185,6 @@
     function MyGame(config) {
         this.Game_constructor(config);
         this.sourceData = [
-            {src: "images/load_hz.png", id: "load_hz"},
             {src: "images/sec_dean_sky.png", id: "bg_sky"},
             {src: "images/sec_dean_star.png", id: "bg_star"},
             {src: "images/sec_dean_logo.png", id: "title"},
