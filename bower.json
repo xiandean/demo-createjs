@@ -20,6 +20,7 @@
   ],
   "dependencies": {
     "EaselJS": "easeljs#^0.8.2",
-    "preloadjs": "*"
+    "fixViewport750": "http://guangdong.sinaimg.cn/subject/2017/lib/js/fixViewport750.js",
+    "PreloadJS": "^0.6.2"
   }
 }
