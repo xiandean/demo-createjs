@@ -33,6 +33,7 @@
         this.stage.canvas.height = this.height;
         this.showFPS = config.showFPS ? true : false;
         this.sourceData = config.sources || "";
+        this.loadProgress = config.loadProgress || "";
         this.objects = {};
     }
     Game.prototype = {
@@ -41,7 +42,10 @@
             var _this = this;
             this.sources = new createjs.LoadQueue(false);
             this.sources.addEventListener('progress', function(event) {
-                console.log(Math.floor(event.progress*100) + "%");
+                var progress = Math.floor(event.progress*100);
+                if(_this.loadProgress) {
+                    _this.loadProgress(progress);
+                }
             });
             this.sources.addEventListener('error', function(event) {
                 console.log(event);
@@ -52,7 +56,6 @@
             this.sources.loadManifest(this.sourceData);
         },
         init: function(param) {
-            console.log();
             if(param instanceof Function) {
                 var callback = param;
             }else if(param) {
@@ -62,6 +65,8 @@
             }
             var _this = this;
             this.paused = true;
+            this.stage.removeAllChildren();
+            this.objects = {};
             if(!this.model && model) {
                 this.model = model;
             }
@@ -166,8 +171,6 @@
         stop: function() {
             this.paused = true;
             createjs.Ticker.removeEventListener("tick", this._handleTick);
-            this.stage.removeAllChildren();
-            this.objects = {};
         },
         restart: function() {
             this.stop();
