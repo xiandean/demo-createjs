@@ -24,17 +24,24 @@
 <canvas id="game"></canvas>
 <script>
     function Game(config) {
-        this.stage = new createjs.Stage(config.id);
+    	this.id = config.id;
         this.x = config.x ? config.x : 0;
         this.y = config.y ? config.y : 0;
         this.width = config.width ? config.width : window.innerWidth;
         this.height = config.height ? config.height : window.innerHeight;
+        this.showFPS = config.showFPS ? true : false;
+        this.sourceData = config.sourceData || "";
+        this.model = config.model || "";
+        this.controller = config.controller || "";
+        this.loadProgress = config.loadProgress || "";
+        this.paused = true;
+        this.stage = new createjs.Stage(this.id);
         this.stage.canvas.width = this.width;
         this.stage.canvas.height = this.height;
-        this.showFPS = config.showFPS ? true : false;
-        this.sourceData = config.sources || "";
-        this.loadProgress = config.loadProgress || "";
+        this.sources = "";
         this.objects = {};
+        this.store = {};
+        this.score = 0;
     }
     Game.prototype = {
         constructor: Game,
@@ -56,37 +63,36 @@
             this.sources.loadManifest(this.sourceData);
         },
         init: function(param) {
-            if(param instanceof Function) {
-                var callback = param;
-            }else if(param) {
-                var model = param.model;
-                var controller = param.controller;
-                var callback = param.callback;
-            }
-            var _this = this;
-            this.paused = true;
-            this.stage.removeAllChildren();
-            this.objects = {};
-            if(!this.model && model) {
-                this.model = model;
-            }
-            if(!this.controller && controller) {
-                this.controller = controller;
-            }
+            var _this = this; 
+            if(param) {
+            	if(param instanceof Function) {
+	                var callback = param;
+	            }else {
+	            	if(param.model) {
+	            		this.model = param.model;
+	            	}
+	            	if(param.controller) {
+	            		this.controller = param.controller;
+	            	}
+	            	if(param.callback) {
+	            		var callback = param.callback;
+	            	}
+	            }
+            }        
             if(!this.sources) {
                 this.preload(function(){
                     _this.render();
                     callback && callback();
                 });
-                createjs.Touch.enable(this.stage);
             }else {
                 this.render();
                 callback && callback();
             }
+            createjs.Touch.enable(this.stage);
         },
         render: function() {
             if(this.model) {
-                this.addObjects(this.model, this.stage);
+                this.addObjects(this.model);
             }
             if(this.controller) {
                 this.controller();
@@ -98,10 +104,10 @@
         },
         addObject: function(objectData, parent) {
             var id = objectData.id;
-            // var parent = parent || this.stage;
             var type = objectData.type || "Container";
+            var object = "";
             if(objectData.object){
-                this.objects[id] = objectData.object;
+                object = objectData.object;
             }else if(type == "Sprite"){
                 var spriteData = {};
                 spriteData.images = [];
@@ -112,9 +118,9 @@
                 spriteData.animations = objectData.spriteData.animations;
        
                 var spriteSheet = new createjs.SpriteSheet(spriteData);
-                this.objects[id] = new createjs.Sprite(spriteSheet);
+                object = new createjs.Sprite(spriteSheet);
             }else if(type == "Shape"){
-                this.objects[id] = new createjs.Shape();
+                object = new createjs.Shape();
                 for(var method in objectData.shapeData) {
                     var param = objectData.shapeData[method]; 
                     var arr = [];
@@ -123,34 +129,44 @@
                     }else {
                         arr.push(param);
                     }
-                    this.objects[id].graphics[method].apply(this.objects[id].graphics, arr);
+                    object.graphics[method].apply(object.graphics, arr);
                 }
             }else if(type == "Text"){
-                this.objects[id] = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
+                object = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
             }else if(type == "Bitmap"){
                 var image = objectData.image || this.sources.getResult(id);
-                this.objects[id] = new createjs.Bitmap(image);
+                object = new createjs.Bitmap(image);
             }else if(type == "Container") {
-                this.objects[id] = new createjs.Container();
+                object = new createjs.Container();
             }
             if(objectData.data) {
                 for(var key in objectData.data) {
-                    this.objects[id][key] = objectData.data[key];
+                    object[key] = objectData.data[key];
                 }
             }
-            if(parent) {
+
+            var store = objectData.store || "";
+            if(store) {
+            	this.store[id] = object;
+            	var parent = this.store[objectData.parent];
+            	if(parent) {
+            		parent.addChild(this.store[id]);
+            	}
+            }else {
+            	this.objects[id] = object;
+            	var parent = parent || this.objects[objectData.parent] || this.stage;
                 parent.addChild(this.objects[id]);
             }
             if(objectData.children) {
                 for(var i = 0; i < objectData.children.length; i++) {
                     var child = objectData.children[i];
-                    this.addObject(child, this.objects[id]);
+                    this.addObject(child, object);
                 }
             }
         },  
-        addObjects: function(objectDataArr, parent) {
+        addObjects: function(objectDataArr) {
             for(var i = 0; i < objectDataArr.length; i++) {
-                this.addObject(objectDataArr[i], parent);
+                this.addObject(objectDataArr[i]);
             }
         },
         getBounds: function() {
@@ -165,7 +181,7 @@
                 if(!_this.paused) {
                     _this.stage.update();
                 }
-                if(_this.showFPS) {
+                if(_this.fpstext) {
                     _this.fpstext.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
                 }
             });
@@ -180,8 +196,15 @@
             this.paused = true;
             createjs.Ticker.removeEventListener("tick", this._handleTick);
         },
+        reset: function() {
+        	this.stage.removeAllChildren();
+            this.objects = {};
+            this.store = {};
+            this.score = 0;
+        },
         restart: function() {
             this.stop();
+            this.reset();
             this.init();
             this.start();
         },
@@ -193,226 +216,233 @@
         }
     };
 
-    function MyGame(config) {
-        this.Game_constructor(config);
-        this.sourceData = [
-            {src: "images/sec_dean_sky.png", id: "bg_sky"},
-            {src: "images/sec_dean_star.png", id: "bg_star"},
-            {src: "images/sec_dean_logo.png", id: "title"},
-            {src: "images/sec_dean_mountain.png", id: "mountain"},
-            {src: "images/sec_dean_light_01.png", id: "light_01"},
-            {src: "images/sec_dean_light_02.png", id: "light_02"},
-            {src: "images/sec_dean_light_03.png", id: "light_03"},
-            {src: "images/sec_dean_light_04.png", id: "light_04"},
-            {src: "images/sec_dean_light.png", id: "light"},
-            {src: "images/sec_dean_person_sprite.png", id: "person"},
-            {src: "images/sec_dean_txt_01.png", id: "txt_01"},
-            {src: "images/sec_dean_txt_02.png", id: "txt_02"},
-            {src: "images/sec_dean_txt_03.png", id: "txt_03"},
-            {src: "images/sec_dean_txt_04.png", id: "txt_04"},
-            {src: "images/sec_dean_txt_04_heard.png", id: "txt_04_heard"},
-            {src: "images/sec_dean_txt_05.png", id: "txt_05"},
-            {src: "images/sec_dean_txt_06.png", id: "txt_06"},
-            {src: "images/sec_dean_man_01_sprite.png", id: "man_01"},
-            {src: "images/sec_dean_man_02_sprite.png", id: "man_02"},
-            {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
-        ];
-        this.model = [
-            {
-                id: "bg",
-                type: "Container",
-                children: [{
-                    id: "bg_sky",
-                    type: "Bitmap"
-                },{
-                    id: "bg_star",
-                    type: "Bitmap",
-                    data: {
-                        x: 437
-                    }
-                }]
-            },{
-                id: "iland",
-                type: "Container",
-                children: [{
-                    id: "mountain",
-                    type: "Bitmap"
-                },{
-                    id: "light_01",
-                    type: "Bitmap",
-                    data: {
-                        x: 422,
-                        y: 272
-                    }
-                },{
-                    id: "light_02",
-                    type: "Bitmap",
-                    data: {
-                        x: 422,
-                        y: 818
-                    }
-                },{
-                    id: "light_03",
-                    type: "Bitmap",
-                    data: {
-                        x: 417,
-                        y: 1443
-                    }
-                },{
-                    id: "light_04",
-                    type: "Bitmap",
-                    data: {
-                        x: 422,
-                        y: 2008
-                    }
-                },{
-                    id: "light",
-                    type: "Bitmap",
-                },{
-                    id: "txt_01",
-                    type: "Bitmap",
-                    data: {
-                        x: 545,
-                        y: 38
-                    }
-                },{
-                    id: "txt_02",
-                    type: "Bitmap",
-                    data: {
-                        x: 490,
-                        y: 620
-                    }
-                },{
-                    id: "txt_03",
-                    type: "Bitmap",
-                    data: {
-                        x: 584,
-                        y: 909
-                    }
-                },{
-                    id: "txt_04_wrap",
-                    type: "Container",
-                    data: {
-                        x: 478,
-                        y: 1228
-                    },
-                    children: [{
-                        id: "txt_04",
-                        type: "Bitmap"
-                    },{
-                        id: "txt_04_heard",
-                        type: "Bitmap",
-                        data: {
-                            x: 12,
-                            y: 25
-                        }
-                    }]
-                },{
-                    id: "txt_05",
-                    type: "Bitmap",
-                    data: {
-                        x: 529,
-                        y: 1820
-                    }
-                },{
-                    id: "txt_06",
-                    type: "Bitmap",
-                    data: {
-                        x: 512,
-                        y: 2179
-                    }
-                },{
-                    id: "man_01",
-                    type: "Sprite",
-                    spriteData: {
-                        images: ["man_01"],
-                        frames: {
-                            width: 245.25,
-                            height: 200
-                        },
-                        animations: {
-                            jump: [0, 7, "jump", 0.15]
-                        }
-                    },
-                    data: {
-                        x: 99,
-                        y: 718
-                    }
-                },{
-                    id: "man_02",
-                    type: "Sprite",
-                    spriteData: {
-                        images: ["man_02"],
-                        frames: {
-                            width: 257.5,
-                            height: 210
-                        },
-                        animations: {
-                            jump: [0, 7, "jump", 0.15]
-                        }
-                    },
-                    data: {
-                        x: 99,
-                        y: 1228
-                    }
-                },{
-                    id: "man_03",
-                    type: "Sprite",
-                    spriteData: {
-                        images: ["man_03"],
-                        frames: {
-                            width: 261.125,
-                            height: 213
-                        },
-                        animations: {
-                            jump: [0, 7, "jump", 0.15]
-                        }
-                    },
-                    data: {
-                        x: 95,
-                        y: 1889
-                    }
-                }]
-            },{
-                id: "title",
-                type: "Bitmap",
-                data: {
-                    x: 658,
-                    y: 44
-                }
-            },{
-                id: "person",
-                type: "Sprite",
-                spriteData: {
-                    images: ["person"],
-                    frames: {
-                        width: 271,
-                        height: 178
-                    },
-                    animations: {
-                        run: [0, 9, "run", 0.15]
-                    }
-                },
-                data: {
-                    x: 22,
-                    y: -178
-                }
-            },{
-                id: "rect",
-                type: "Shape",
-                shapeData: {
-                    beginStroke: "#f00",
-                    drawRect: [0, 0, 48, 24]
-                },
-                data: {
-                    x: 0,
-                    y: 1334 - 24
-                }
-            }
-        ];
-    }
-    createjs.extend(MyGame, Game);
-    MyGame.prototype.controller = function() {
+    var game = new Game({
+        id: 'game',
+        showFPS: true
+    });
+    game.sourceData = [
+        {src: "images/sec_dean_sky.png", id: "bg_sky"},
+        {src: "images/sec_dean_star.png", id: "bg_star"},
+        {src: "images/sec_dean_logo.png", id: "title"},
+        {src: "images/sec_dean_mountain.png", id: "mountain"},
+        {src: "images/sec_dean_light_01.png", id: "light_01"},
+        {src: "images/sec_dean_light_02.png", id: "light_02"},
+        {src: "images/sec_dean_light_03.png", id: "light_03"},
+        {src: "images/sec_dean_light_04.png", id: "light_04"},
+        {src: "images/sec_dean_light.png", id: "light"},
+        {src: "images/sec_dean_person_sprite.png", id: "person"},
+        {src: "images/sec_dean_txt_01.png", id: "txt_01"},
+        {src: "images/sec_dean_txt_02.png", id: "txt_02"},
+        {src: "images/sec_dean_txt_03.png", id: "txt_03"},
+        {src: "images/sec_dean_txt_04.png", id: "txt_04"},
+        {src: "images/sec_dean_txt_04_heard.png", id: "txt_04_heard"},
+        {src: "images/sec_dean_txt_05.png", id: "txt_05"},
+        {src: "images/sec_dean_txt_06.png", id: "txt_06"},
+        {src: "images/sec_dean_man_01_sprite.png", id: "man_01"},
+        {src: "images/sec_dean_man_02_sprite.png", id: "man_02"},
+        {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
+    ];
+    game.preload(function() {
+    	game.model = [
+	        {
+	            id: "bg",
+	            type: "Container",
+
+	            children: [{
+	                id: "bg_sky",
+	                type: "Bitmap"
+	            },{
+	                id: "bg_star",
+	                type: "Bitmap",
+	                data: {
+	                    x: 437
+	                }
+	            }]
+	        },{
+	            id: "iland",
+	            type: "Container",
+	            children: [{
+	                id: "mountain",
+	                type: "Bitmap"
+	            },{
+	                id: "light_01",
+	                type: "Bitmap",
+	                data: {
+	                    x: 422,
+	                    y: 272
+	                }
+	            },{
+	                id: "light_02",
+	                type: "Bitmap",
+	                data: {
+	                    x: 422,
+	                    y: 818
+	                }
+	            },{
+	                id: "light_03",
+	                type: "Bitmap",
+	                data: {
+	                    x: 417,
+	                    y: 1443
+	                }
+	            },{
+	                id: "light_04",
+	                type: "Bitmap",
+	                data: {
+	                    x: 422,
+	                    y: 2008
+	                }
+	            },{
+	                id: "light",
+	                type: "Bitmap",
+	            },{
+	                id: "txt_01",
+	                type: "Bitmap",
+	                data: {
+	                    x: 545,
+	                    y: 38
+	                }
+	            },{
+	                id: "txt_02",
+	                type: "Bitmap",
+	                data: {
+	                    x: 490,
+	                    y: 620
+	                }
+	            },{
+	                id: "txt_03",
+	                type: "Bitmap",
+	                data: {
+	                    x: 584,
+	                    y: 909
+	                }
+	            },{
+	                id: "txt_04_wrap",
+	                type: "Container",
+	                data: {
+	                    x: 478,
+	                    y: 1228
+	                },
+	                children: [{
+	                    id: "txt_04",
+	                    type: "Bitmap"
+	                },{
+	                    id: "txt_04_heard",
+	                    store: true,
+	                    type: "Bitmap",
+	                    data: {
+	                        x: 12,
+	                        y: 25
+	                    }
+	                }]
+	            },{
+	                id: "txt_05",
+	                type: "Bitmap",
+	                data: {
+	                    x: 529,
+	                    y: 1820
+	                }
+	            },{
+	                id: "txt_06",
+	                type: "Bitmap",
+	                data: {
+	                    x: 512,
+	                    y: 2179
+	                }
+	            },{
+	                id: "man_01",
+	                type: "Sprite",
+	                spriteData: {
+	                    images: ["man_01"],
+	                    frames: {
+	                        width: 245.25,
+	                        height: 200
+	                    },
+	                    animations: {
+	                        jump: [0, 7, "jump", 0.15]
+	                    }
+	                },
+	                data: {
+	                    x: 99,
+	                    y: 718
+	                }
+	            },{
+	                id: "man_02",
+	                type: "Sprite",
+	                spriteData: {
+	                    images: ["man_02"],
+	                    frames: {
+	                        width: 257.5,
+	                        height: 210
+	                    },
+	                    animations: {
+	                        jump: [0, 7, "jump", 0.15]
+	                    }
+	                },
+	                data: {
+	                    x: 99,
+	                    y: 1228
+	                }
+	            },{
+	                id: "man_03",
+	                type: "Sprite",
+	                spriteData: {
+	                    images: ["man_03"],
+	                    frames: {
+	                        width: 261.125,
+	                        height: 213
+	                    },
+	                    animations: {
+	                        jump: [0, 7, "jump", 0.15]
+	                    }
+	                },
+	                data: {
+	                    x: 95,
+	                    y: 1889
+	                }
+	            }]
+	        },{
+	            id: "title",
+	            type: "Bitmap",
+	            data: {
+	                x: 658,
+	                y: 44
+	            }
+	        },{
+	            id: "person",
+	            type: "Sprite",
+	            spriteData: {
+	                images: ["person"],
+	                frames: {
+	                    width: 271,
+	                    height: 178
+	                },
+	                animations: {
+	                    run: [0, 9, "run", 0.15]
+	                }
+	            },
+	            data: {
+	                x: 22,
+	                y: -178
+	            }
+	        },{
+	            id: "rect",
+	            type: "Shape",
+	            shapeData: {
+	                beginStroke: "#f00",
+	                drawRect: [0, 0, 48, 24]
+	            },
+	            data: {
+	                x: 0,
+	                y: 1334 - 24
+	            }
+	        }
+    	];
+    	game.init(function() {
+    		game.start();
+    	});
+    });
+	game.controller = function() {
         var _this = this;
         var person = this.objects.person;
         var iland = this.objects.iland;
@@ -454,20 +484,7 @@
                 _this.restart();
             }
         });
-    }
-    MyGame = createjs.promote(MyGame, "Game");
-    
-    var gameConfig = {
-        id: 'game',
-        width: 750,
-        height: 1334,
-        showFPS: true
-    };
-    var game = new MyGame(gameConfig);
-
-    game.init(function() {
-        game.start();
-    });
+	}
     
 </script>
 </body>
