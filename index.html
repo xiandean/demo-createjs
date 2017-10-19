@@ -40,7 +40,6 @@
         this.stage.canvas.height = this.height;
         this.sources = "";
         this.objects = {};
-        this.store = {};
         this.score = 0;
     }
     Game.prototype = {
@@ -102,7 +101,7 @@
             }
             this.stage.update();
         },
-        addObject: function(objectData, parent) {
+        addObject: function(objectData, parentId) {
             var id = objectData.id;
             var type = objectData.type || "Container";
             var object = "";
@@ -145,22 +144,20 @@
                 }
             }
 
-            var store = objectData.store || "";
-            if(store) {
-            	this.store[id] = object;
-            	var parent = this.store[objectData.parent];
-            	if(parent) {
-            		parent.addChild(this.store[id]);
-            	}
+        	this.objects[id] = object;
+        	// var parent = parent || this.objects[objectData.parent] || this.stage;
+            if(parentId && this.objects[parentId]) {
+                this.objects[id].parentId = parentId;
+                var parent =  this.objects[parentId];
             }else {
-            	this.objects[id] = object;
-            	var parent = parent || this.objects[objectData.parent] || this.stage;
-                parent.addChild(this.objects[id]);
+                var parent = this.stage;
             }
+            parent.addChild(this.objects[id]);
+
             if(objectData.children) {
                 for(var i = 0; i < objectData.children.length; i++) {
                     var child = objectData.children[i];
-                    this.addObject(child, object);
+                    this.addObject(child, id);
                 }
             }
         },  
@@ -168,6 +165,34 @@
             for(var i = 0; i < objectDataArr.length; i++) {
                 this.addObject(objectDataArr[i]);
             }
+        },
+        getObjectsTree: function() {
+            var _this = this;
+            var objectsTree = {};
+
+            for (var id in this.objects) {
+                if(!this.objects[id].parentId) {
+                    objectsTree[id] = {};
+                }
+            }
+            loop(objectsTree);
+            function loop(parent) {
+                // console.log(_this.objectsTree);
+                for(var resultId in parent) {
+                    console.group(resultId + "：");
+                    console.log(_this.objects[resultId].getTransformedBounds());
+                    for(var id in _this.objects) {
+                        if(_this.objects[id].parentId == resultId) {
+                            parent[resultId][id] = {};
+                            // console.log(id);
+                        }
+                    }
+                    loop(parent[resultId]);
+                    console.groupEnd();
+                }
+            }
+
+            return objectsTree;
         },
         getBounds: function() {
             return {x: this.x, y: this.y, width: this.width, height: this.height}
@@ -199,7 +224,6 @@
         reset: function() {
         	this.stage.removeAllChildren();
             this.objects = {};
-            this.store = {};
             this.score = 0;
         },
         restart: function() {
@@ -328,7 +352,6 @@
 	                    type: "Bitmap"
 	                },{
 	                    id: "txt_04_heard",
-	                    store: true,
 	                    type: "Bitmap",
 	                    data: {
 	                        x: 12,
@@ -439,6 +462,9 @@
 	        }
     	];
     	game.init(function() {
+            console.dir(game.objects);
+            
+            console.log(game.getObjectsTree());
     		game.start();
     	});
     });
