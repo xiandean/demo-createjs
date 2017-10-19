@@ -101,13 +101,15 @@
             }
             this.stage.update();
         },
-        addObject: function(objectData, parentId) {
+        createObject: function(objectData) {
+        },
+        addObject: function(objectData) {
             var id = objectData.id;
-            var type = objectData.type || "Container";
+            var type = objectData.type;
             var object = "";
             if(objectData.object){
                 object = objectData.object;
-            }else if(type == "Sprite"){
+            }else if(objectData.spriteData){
                 var spriteData = {};
                 spriteData.images = [];
                 for(var j = 0; j < objectData.spriteData.images.length; j++) {
@@ -118,7 +120,7 @@
        
                 var spriteSheet = new createjs.SpriteSheet(spriteData);
                 object = new createjs.Sprite(spriteSheet);
-            }else if(type == "Shape"){
+            }else if(objectData.shapeData){
                 object = new createjs.Shape();
                 for(var method in objectData.shapeData) {
                     var param = objectData.shapeData[method]; 
@@ -130,12 +132,12 @@
                     }
                     object.graphics[method].apply(object.graphics, arr);
                 }
-            }else if(type == "Text"){
+            }else if(objectData.textData){
                 object = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
-            }else if(type == "Bitmap"){
-                var image = objectData.image || this.sources.getResult(id);
+            }else if(objectData.image){
+                var image = this.sources.getResult(objectData.image);
                 object = new createjs.Bitmap(image);
-            }else if(type == "Container") {
+            }else {
                 object = new createjs.Container();
             }
             if(objectData.data) {
@@ -145,19 +147,21 @@
             }
 
         	this.objects[id] = object;
-        	// var parent = parent || this.objects[objectData.parent] || this.stage;
-            if(parentId && this.objects[parentId]) {
-                this.objects[id].parentId = parentId;
-                var parent =  this.objects[parentId];
-            }else {
-                var parent = this.stage;
-            }
-            parent.addChild(this.objects[id]);
+        	this.objects[id].objectId = id;
+        	if(type) {
+        		this.objects[id].type = type;
+        	}
+        	if(objectData.parent || objectData.parent === undefined) {
+        		var parent =  this.objects[objectData.parent] || this.stage;
+        		parent.addChild(this.objects[id]);
+        	}
+            
 
             if(objectData.children) {
                 for(var i = 0; i < objectData.children.length; i++) {
                     var child = objectData.children[i];
-                    this.addObject(child, id);
+                    child.parent = id;
+                    this.addObject(child);
                 }
             }
         },  
@@ -166,33 +170,83 @@
                 this.addObject(objectDataArr[i]);
             }
         },
-        getObjectsTree: function() {
+        getObjectTree: function(objects) {
             var _this = this;
-            var objectsTree = {};
-
-            for (var id in this.objects) {
-                if(!this.objects[id].parentId) {
-                    objectsTree[id] = {};
+            var objectTree = [];
+            var objects = objects || this.objects;
+            for (var id in objects) {
+                if(!objects[id].parentId) {
+                    objectTree.push({
+                    	id: id,
+                    	bounds: objects[id].getTransformedBounds()
+                    });
                 }
             }
-            loop(objectsTree);
+            loop(objectTree);
             function loop(parent) {
-                // console.log(_this.objectsTree);
-                for(var resultId in parent) {
-                    console.group(resultId + "：");
-                    console.log(_this.objects[resultId].getTransformedBounds());
-                    for(var id in _this.objects) {
-                        if(_this.objects[id].parentId == resultId) {
-                            parent[resultId][id] = {};
-                            // console.log(id);
+            	for(var i = 0; i < parent.length; i++) {
+            		var resultId = parent[i].id;
+            		console.group(resultId + "：");
+                    console.log(objects[resultId].getTransformedBounds());
+            		for(var id in objects) {
+                        if(objects[id].parentId == resultId) {
+                        	if(!parent[i].children) {
+                        		parent[i].children = [];
+                        	}
+                            parent[i].children.push({
+                            	id: id,
+                    			bounds: objects[id].getTransformedBounds()
+                            });
                         }
                     }
-                    loop(parent[resultId]);
+                    if(parent[i].children) {
+                    	loop(parent[i].children);
+                    }
                     console.groupEnd();
-                }
+                    
+            	}
             }
 
-            return objectsTree;
+            var result = {
+            	id: "objects",
+            	children: objectTree
+            };
+            return result;
+        },
+        getObjectLog: function(object) {
+        	var result = {};
+        	var object = object || this.stage;
+        	loop(object, result);
+            function loop(object, result) {
+          		result.id = object.objectId || object.id;
+	        	result.type = object.type;
+	        	result.x = object.x;
+    			result.y = object.y;
+    			result.regX = object.regX;
+    			result.regY = object.regY;
+    			result.scaleX = object.scaleX;
+    			result.scaleY = object.scaleY;
+    			result.rotation = object.rotation;
+    			result.alpha = object.alpha;
+    			result.visible = object.visible;
+    			result.parent = object.parent;
+				result.bounds = object.getTransformedBounds();
+    			
+    			console.group(result.id + "：");
+    			console.dir(result);
+	        	var children = object.children;
+            	if(children) {
+            		result.children = [];
+            		for(var i = 0; i < children.length; i++) {
+            			var child = children[i];
+            			result.children[i] = {};
+            			loop(child, result.children[i]);
+            		}
+            	}
+            	console.groupEnd();
+        
+            }
+            return result;
         },
         getBounds: function() {
             return {x: this.x, y: this.y, width: this.width, height: this.height}
@@ -271,12 +325,14 @@
 	        {
 	            id: "bg",
 	            type: "Container",
-
+	            // parent: null,
 	            children: [{
 	                id: "bg_sky",
+	                image: "bg_sky",
 	                type: "Bitmap"
 	            },{
 	                id: "bg_star",
+	                image: "bg_star",
 	                type: "Bitmap",
 	                data: {
 	                    x: 437
@@ -287,9 +343,11 @@
 	            type: "Container",
 	            children: [{
 	                id: "mountain",
+	                image: "mountain",
 	                type: "Bitmap"
 	            },{
 	                id: "light_01",
+	                image: "light_01",
 	                type: "Bitmap",
 	                data: {
 	                    x: 422,
@@ -297,6 +355,7 @@
 	                }
 	            },{
 	                id: "light_02",
+	                image: "light_02",
 	                type: "Bitmap",
 	                data: {
 	                    x: 422,
@@ -304,6 +363,7 @@
 	                }
 	            },{
 	                id: "light_03",
+	                image: "light_03",
 	                type: "Bitmap",
 	                data: {
 	                    x: 417,
@@ -311,6 +371,7 @@
 	                }
 	            },{
 	                id: "light_04",
+	                image: "light_04",
 	                type: "Bitmap",
 	                data: {
 	                    x: 422,
@@ -318,9 +379,11 @@
 	                }
 	            },{
 	                id: "light",
+	                image: "light",
 	                type: "Bitmap",
 	            },{
 	                id: "txt_01",
+	                image: "txt_01",
 	                type: "Bitmap",
 	                data: {
 	                    x: 545,
@@ -328,6 +391,7 @@
 	                }
 	            },{
 	                id: "txt_02",
+	                image: "txt_02",
 	                type: "Bitmap",
 	                data: {
 	                    x: 490,
@@ -335,6 +399,7 @@
 	                }
 	            },{
 	                id: "txt_03",
+	                image: "txt_03",
 	                type: "Bitmap",
 	                data: {
 	                    x: 584,
@@ -349,9 +414,11 @@
 	                },
 	                children: [{
 	                    id: "txt_04",
+	                    image: "txt_04",
 	                    type: "Bitmap"
 	                },{
 	                    id: "txt_04_heard",
+	                    image: "txt_04_heard",
 	                    type: "Bitmap",
 	                    data: {
 	                        x: 12,
@@ -360,6 +427,7 @@
 	                }]
 	            },{
 	                id: "txt_05",
+	                image: "txt_05",
 	                type: "Bitmap",
 	                data: {
 	                    x: 529,
@@ -367,6 +435,7 @@
 	                }
 	            },{
 	                id: "txt_06",
+	                image: "txt_06",
 	                type: "Bitmap",
 	                data: {
 	                    x: 512,
@@ -426,6 +495,7 @@
 	            }]
 	        },{
 	            id: "title",
+	            image: "title",
 	            type: "Bitmap",
 	            data: {
 	                x: 658,
@@ -451,6 +521,7 @@
 	        },{
 	            id: "rect",
 	            type: "Shape",
+	            parent: "txt_04_wrap",
 	            shapeData: {
 	                beginStroke: "#f00",
 	                drawRect: [0, 0, 48, 24]
@@ -462,9 +533,9 @@
 	        }
     	];
     	game.init(function() {
-            console.dir(game.objects);
-            
-            console.log(game.getObjectsTree());
+            // console.dir(game.objects);
+
+            console.log(game.getObjectLog(game.objects.bg));
     		game.start();
     	});
     });
