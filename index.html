@@ -101,9 +101,7 @@
             }
             this.stage.update();
         },
-        createObject: function(objectData) {
-        },
-        addObject: function(objectData) {
+        addObject: function(objectData, parent) {
             var id = objectData.id;
             var type = objectData.type;
             var object = "";
@@ -146,107 +144,37 @@
                 }
             }
 
-        	this.objects[id] = object;
-        	this.objects[id].objectId = id;
+        	
+        	object.objectId = id;
         	if(type) {
-        		this.objects[id].type = type;
+        		object.type = type;
         	}
-        	if(objectData.parent || objectData.parent === undefined) {
+            if(parent) {
+                parent.addChild(object);
+            }else if(objectData.parent || typeof objectData.parent == "undefined") {
         		var parent =  this.objects[objectData.parent] || this.stage;
-        		parent.addChild(this.objects[id]);
-        	}
-            
+        		parent.addChild(object);
+        	}           
 
             if(objectData.children) {
                 for(var i = 0; i < objectData.children.length; i++) {
                     var child = objectData.children[i];
-                    child.parent = id;
-                    this.addObject(child);
+                    // child.parent = id;
+                    this.addObject(child, object);
                 }
             }
+            if(id) {
+                this.objects[id] = object;
+            }
+            
+            return object;
         },  
         addObjects: function(objectDataArr) {
+            var objects = [];
             for(var i = 0; i < objectDataArr.length; i++) {
-                this.addObject(objectDataArr[i]);
+                objects.push(this.addObject(objectDataArr[i]));
             }
-        },
-        getObjectTree: function(objects) {
-            var _this = this;
-            var objectTree = [];
-            var objects = objects || this.objects;
-            for (var id in objects) {
-                if(!objects[id].parentId) {
-                    objectTree.push({
-                    	id: id,
-                    	bounds: objects[id].getTransformedBounds()
-                    });
-                }
-            }
-            loop(objectTree);
-            function loop(parent) {
-            	for(var i = 0; i < parent.length; i++) {
-            		var resultId = parent[i].id;
-            		console.group(resultId + "：");
-                    console.log(objects[resultId].getTransformedBounds());
-            		for(var id in objects) {
-                        if(objects[id].parentId == resultId) {
-                        	if(!parent[i].children) {
-                        		parent[i].children = [];
-                        	}
-                            parent[i].children.push({
-                            	id: id,
-                    			bounds: objects[id].getTransformedBounds()
-                            });
-                        }
-                    }
-                    if(parent[i].children) {
-                    	loop(parent[i].children);
-                    }
-                    console.groupEnd();
-                    
-            	}
-            }
-
-            var result = {
-            	id: "objects",
-            	children: objectTree
-            };
-            return result;
-        },
-        getObjectLog: function(object) {
-        	var result = {};
-        	var object = object || this.stage;
-        	loop(object, result);
-            function loop(object, result) {
-          		result.id = object.objectId || object.id;
-	        	result.type = object.type;
-	        	result.x = object.x;
-    			result.y = object.y;
-    			result.regX = object.regX;
-    			result.regY = object.regY;
-    			result.scaleX = object.scaleX;
-    			result.scaleY = object.scaleY;
-    			result.rotation = object.rotation;
-    			result.alpha = object.alpha;
-    			result.visible = object.visible;
-    			result.parent = object.parent;
-				result.bounds = object.getTransformedBounds();
-    			
-    			console.group(result.id + "：");
-    			console.dir(result);
-	        	var children = object.children;
-            	if(children) {
-            		result.children = [];
-            		for(var i = 0; i < children.length; i++) {
-            			var child = children[i];
-            			result.children[i] = {};
-            			loop(child, result.children[i]);
-            		}
-            	}
-            	console.groupEnd();
-        
-            }
-            return result;
+            return objects;
         },
         getBounds: function() {
             return {x: this.x, y: this.y, width: this.width, height: this.height}
@@ -259,9 +187,6 @@
             createjs.Ticker.addEventListener("tick", this._handleTick = function(event) {
                 if(!_this.paused) {
                     _this.stage.update();
-                }
-                if(_this.fpstext) {
-                    _this.fpstext.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
                 }
             });
         },
@@ -287,10 +212,97 @@
             this.start();
         },
         setFPS: function() {
-            this.fpstext = new createjs.Text("","20px Arial","#f00");
-            this.fpstext.x = 0;
-            this.fpstext.y = this.height - 24;
-            this.stage.addChild(this.fpstext);
+            var _this = this;
+            this._fpsText = this.addObject({
+                id: "fpsText",
+                type: "Text",
+                textData: {
+                    text: "",
+                    font: "Bold 20px Arial",
+                    color: "#f00"
+                },
+                data: {
+                    x: 0,
+                    y: this.height - 24
+                }
+            });
+            this._fpsText.addEventListener("tick", function() {
+                _this._fpsText.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
+            });
+        },
+        utils: {
+            consoleLog: function(object) {
+                var result = {};
+                var object = object;
+                if(!object) {
+                    return object;
+                }
+                loop(object, result);
+                function loop(object, result) {
+                    result.id = object.objectId || object.id || "stage";
+                    if(object.type) {
+                        result.type = object.type;
+                    }
+                    result.x = object.x;
+                    result.y = object.y;
+                    result.regX = object.regX;
+                    result.regY = object.regY;
+                    result.scaleX = object.scaleX;
+                    result.scaleY = object.scaleY;
+                    result.rotation = object.rotation;
+                    result.alpha = object.alpha;
+                    result.visible = object.visible;
+                    if(object.parent) {
+                        result.parent = object.parent.objectId || object.parent.id || "stage";
+                    }
+                    if(object.getTransformedBounds()) {
+                        result.width = object.getTransformedBounds().width;
+                        result.height = object.getTransformedBounds().height;
+                    }
+                    console.group(result.id + "：");
+                    console.dir(result);
+                    var children = object.children;
+                    if(children) {
+                        result.children = [];
+                        for(var i = 0; i < children.length; i++) {
+                            var child = children[i];
+                            result.children[i] = {};
+                            loop(child, result.children[i]);
+                        }
+                    }
+                    console.groupEnd();
+                }
+                return result;
+            },
+            hitTest: function(object, target) {
+
+                if(object.getTransformedBounds) {
+                    var boundsA = object.getTransformedBounds();
+                }else {
+                    var boundsA = {x: object.x, y: object.y, width: object.width || 0, height: object.height || 0};
+                }
+
+                if(target.getTransformedBounds) {
+                    var boundsB = target.getTransformedBounds();
+                }else {
+                    var boundsB = {x: target.x, y: target.y, width: target.width || 0, height: target.height || 0};
+                }
+
+                // if(object.localToGlobal && target.localToGlobal) {
+                //     var positionA  = object.localToGlobal(0, 0);
+                //     var positionB = target.localToGlobal(0, 0);
+                // }
+                
+                    
+                if(boundsA.x > boundsB.x + boundsB.width || boundsA.x + boundsA.width < boundsB.x || boundsA.y > boundsB.y + boundsB.height || boundsA.y + boundsA.height < boundsB.y) {
+                    return false;
+                }else {
+                    return true;
+                }
+            },
+            getRandom: function(a,b){
+                return Math.floor(Math.random()*(b-a)+a);
+            }
         }
     };
 
@@ -321,226 +333,253 @@
         {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
     ];
     game.preload(function() {
-    	game.model = [
-	        {
-	            id: "bg",
-	            type: "Container",
-	            // parent: null,
-	            children: [{
-	                id: "bg_sky",
-	                image: "bg_sky",
-	                type: "Bitmap"
-	            },{
-	                id: "bg_star",
-	                image: "bg_star",
-	                type: "Bitmap",
-	                data: {
-	                    x: 437
-	                }
-	            }]
-	        },{
-	            id: "iland",
-	            type: "Container",
-	            children: [{
-	                id: "mountain",
-	                image: "mountain",
-	                type: "Bitmap"
-	            },{
-	                id: "light_01",
-	                image: "light_01",
-	                type: "Bitmap",
-	                data: {
-	                    x: 422,
-	                    y: 272
-	                }
-	            },{
-	                id: "light_02",
-	                image: "light_02",
-	                type: "Bitmap",
-	                data: {
-	                    x: 422,
-	                    y: 818
-	                }
-	            },{
-	                id: "light_03",
-	                image: "light_03",
-	                type: "Bitmap",
-	                data: {
-	                    x: 417,
-	                    y: 1443
-	                }
-	            },{
-	                id: "light_04",
-	                image: "light_04",
-	                type: "Bitmap",
-	                data: {
-	                    x: 422,
-	                    y: 2008
-	                }
-	            },{
-	                id: "light",
-	                image: "light",
-	                type: "Bitmap",
-	            },{
-	                id: "txt_01",
-	                image: "txt_01",
-	                type: "Bitmap",
-	                data: {
-	                    x: 545,
-	                    y: 38
-	                }
-	            },{
-	                id: "txt_02",
-	                image: "txt_02",
-	                type: "Bitmap",
-	                data: {
-	                    x: 490,
-	                    y: 620
-	                }
-	            },{
-	                id: "txt_03",
-	                image: "txt_03",
-	                type: "Bitmap",
-	                data: {
-	                    x: 584,
-	                    y: 909
-	                }
-	            },{
-	                id: "txt_04_wrap",
-	                type: "Container",
-	                data: {
-	                    x: 478,
-	                    y: 1228
-	                },
-	                children: [{
-	                    id: "txt_04",
-	                    image: "txt_04",
-	                    type: "Bitmap"
-	                },{
-	                    id: "txt_04_heard",
-	                    image: "txt_04_heard",
-	                    type: "Bitmap",
-	                    data: {
-	                        x: 12,
-	                        y: 25
-	                    }
-	                }]
-	            },{
-	                id: "txt_05",
-	                image: "txt_05",
-	                type: "Bitmap",
-	                data: {
-	                    x: 529,
-	                    y: 1820
-	                }
-	            },{
-	                id: "txt_06",
-	                image: "txt_06",
-	                type: "Bitmap",
-	                data: {
-	                    x: 512,
-	                    y: 2179
-	                }
-	            },{
-	                id: "man_01",
-	                type: "Sprite",
-	                spriteData: {
-	                    images: ["man_01"],
-	                    frames: {
-	                        width: 245.25,
-	                        height: 200
-	                    },
-	                    animations: {
-	                        jump: [0, 7, "jump", 0.15]
-	                    }
-	                },
-	                data: {
-	                    x: 99,
-	                    y: 718
-	                }
-	            },{
-	                id: "man_02",
-	                type: "Sprite",
-	                spriteData: {
-	                    images: ["man_02"],
-	                    frames: {
-	                        width: 257.5,
-	                        height: 210
-	                    },
-	                    animations: {
-	                        jump: [0, 7, "jump", 0.15]
-	                    }
-	                },
-	                data: {
-	                    x: 99,
-	                    y: 1228
-	                }
-	            },{
-	                id: "man_03",
-	                type: "Sprite",
-	                spriteData: {
-	                    images: ["man_03"],
-	                    frames: {
-	                        width: 261.125,
-	                        height: 213
-	                    },
-	                    animations: {
-	                        jump: [0, 7, "jump", 0.15]
-	                    }
-	                },
-	                data: {
-	                    x: 95,
-	                    y: 1889
-	                }
-	            }]
-	        },{
-	            id: "title",
-	            image: "title",
-	            type: "Bitmap",
-	            data: {
-	                x: 658,
-	                y: 44
-	            }
-	        },{
-	            id: "person",
-	            type: "Sprite",
-	            spriteData: {
-	                images: ["person"],
-	                frames: {
-	                    width: 271,
-	                    height: 178
-	                },
-	                animations: {
-	                    run: [0, 9, "run", 0.15]
-	                }
-	            },
-	            data: {
-	                x: 22,
-	                y: -178
-	            }
-	        },{
-	            id: "rect",
-	            type: "Shape",
-	            parent: "txt_04_wrap",
-	            shapeData: {
-	                beginStroke: "#f00",
-	                drawRect: [0, 0, 48, 24]
-	            },
-	            data: {
-	                x: 0,
-	                y: 1334 - 24
-	            }
-	        }
-    	];
     	game.init(function() {
             // console.dir(game.objects);
-
-            console.log(game.getObjectLog(game.objects.bg));
+            game.utils.consoleLog(game.stage);
     		game.start();
     	});
     });
 	game.controller = function() {
         var _this = this;
+        var model = [
+            {
+                id: "bg",
+                type: "Container",
+                // parent: null,
+                children: [{
+                    id: "bg_sky",
+                    image: "bg_sky",
+                    type: "Bitmap"
+                },{
+                    id: "bg_star",
+                    image: "bg_star",
+                    type: "Bitmap",
+                    data: {
+                        x: 437
+                    }
+                }]
+            },{
+                id: "iland",
+                type: "Container",
+                children: [{
+                    id: "mountain",
+                    image: "mountain",
+                    type: "Bitmap"
+                },{
+                    id: "light_01",
+                    image: "light_01",
+                    type: "Bitmap",
+                    data: {
+                        x: 422,
+                        y: 272
+                    }
+                },{
+                    id: "light_02",
+                    image: "light_02",
+                    type: "Bitmap",
+                    data: {
+                        x: 422,
+                        y: 818
+                    }
+                },{
+                    id: "light_03",
+                    image: "light_03",
+                    type: "Bitmap",
+                    data: {
+                        x: 417,
+                        y: 1443
+                    }
+                },{
+                    id: "light_04",
+                    image: "light_04",
+                    type: "Bitmap",
+                    data: {
+                        x: 422,
+                        y: 2008
+                    }
+                },{
+                    id: "light",
+                    image: "light",
+                    type: "Bitmap",
+                },{
+                    id: "txt_01",
+                    image: "txt_01",
+                    type: "Bitmap",
+                    data: {
+                        x: 545,
+                        y: 38
+                    }
+                },{
+                    id: "txt_02",
+                    image: "txt_02",
+                    type: "Bitmap",
+                    data: {
+                        x: 490,
+                        y: 620
+                    }
+                },{
+                    id: "txt_03",
+                    image: "txt_03",
+                    type: "Bitmap",
+                    data: {
+                        x: 584,
+                        y: 909
+                    }
+                },{
+                    id: "txt_04_wrap",
+                    type: "Container",
+                    data: {
+                        x: 478,
+                        y: 1228
+                    },
+                    children: [{
+                        id: "txt_04",
+                        image: "txt_04",
+                        type: "Bitmap"
+                    },{
+                        id: "txt_04_heard",
+                        image: "txt_04_heard",
+                        type: "Bitmap",
+                        data: {
+                            x: 12,
+                            y: 25
+                        }
+                    }]
+                },{
+                    id: "txt_05",
+                    image: "txt_05",
+                    type: "Bitmap",
+                    data: {
+                        x: 529,
+                        y: 1820
+                    }
+                },{
+                    id: "txt_06",
+                    image: "txt_06",
+                    type: "Bitmap",
+                    data: {
+                        x: 512,
+                        y: 2179
+                    }
+                },{
+                    id: "man_01",
+                    type: "Sprite",
+                    spriteData: {
+                        images: ["man_01"],
+                        frames: {
+                            width: 245.25,
+                            height: 200
+                        },
+                        animations: {
+                            jump: [0, 7, "jump", 0.15]
+                        }
+                    },
+                    data: {
+                        x: 99,
+                        y: 718
+                    }
+                },{
+                    id: "man_02",
+                    type: "Sprite",
+                    spriteData: {
+                        images: ["man_02"],
+                        frames: {
+                            width: 257.5,
+                            height: 210
+                        },
+                        animations: {
+                            jump: [0, 7, "jump", 0.15]
+                        }
+                    },
+                    data: {
+                        x: 99,
+                        y: 1228
+                    }
+                },{
+                    id: "man_03",
+                    type: "Sprite",
+                    spriteData: {
+                        images: ["man_03"],
+                        frames: {
+                            width: 261.125,
+                            height: 213
+                        },
+                        animations: {
+                            jump: [0, 7, "jump", 0.15]
+                        }
+                    },
+                    data: {
+                        x: 95,
+                        y: 1889
+                    }
+                }]
+            },{
+                id: "title",
+                image: "title",
+                type: "Bitmap",
+                data: {
+                    x: 658,
+                    y: 44
+                }
+            },{
+                id: "person",
+                type: "Sprite",
+                spriteData: {
+                    images: ["person"],
+                    frames: {
+                        width: 271,
+                        height: 178
+                    },
+                    animations: {
+                        run: [0, 9, "run", 0.15]
+                    }
+                },
+                data: {
+                    x: 22,
+                    y: -178,
+                    // regX: 10,
+                    // regY: 10,
+                    rotation: 30
+                }
+            },{
+                // id: "rect",
+                type: "Shape",
+                parent: "txt_04_wrap",
+                shapeData: {
+                    beginStroke: "#f00",
+                    drawRect: [0, 0, 48, 24]
+                },
+                data: {
+                    x: 0,
+                    y: 1334 - 24
+                }
+            }
+        ];
+        this.addObjects(model);
+        this.pool = {
+            txts: []
+        }; 
+
+        var txtsImages = ["txt_01", "txt_02", "txt_03"];
+        txtsImages.forEach(function(item, index) {
+            var txtTemplate = _this.addObject({
+                parent: null,
+                image: item,
+                type: "Bitmap"
+            });
+
+            var txtsData = [];
+            for(var i = 0; i < 10; i++) {
+                txtsData.push({
+                    parent: null,
+                    object: txtTemplate.clone()
+                });
+            }
+            _this.pool.txts.push(_this.addObjects(txtsData));
+
+        }); 
+
+
         var person = this.objects.person;
         var iland = this.objects.iland;
         var iland_desY = window.innerHeight - iland.getBounds().height;
@@ -559,7 +598,13 @@
         }];
 
         person.gotoAndPlay("run");
+        console.log(person.x, person.y, person.regX, person.regY);
+        console.log(person.getTransformedBounds());
+        console.log(person.localToGlobal(0, 0));
         person.addEventListener("tick", function() {
+            // console.log(game.utils.hitTest(person, {y: 130}));
+            // console.log(person.localToGlobal(0, 0));
+            // console.log(game.utils.hitTest(person, manData[0].object));
             for(var i = 0; i < manData.length; i++) {
                 if(!manData[i].animating && manData[i].object.y + iland.y <= person.y + person.getBounds().height) {
                     manData[i].animating = true;
