@@ -288,11 +288,17 @@
                     var boundsB = {x: target.x, y: target.y, width: target.width || 0, height: target.height || 0};
                 }
 
-                // if(object.localToGlobal && target.localToGlobal) {
-                //     var positionA  = object.localToGlobal(0, 0);
-                //     var positionB = target.localToGlobal(0, 0);
-                // }
-                
+                if(object.parent && target.parent && object.parent != target.parent) {
+                    var positionA  = object.parent.localToGlobal(0, 0);
+                    boundsA.x = boundsA.x + positionA.x;
+                    boundsA.y = boundsA.y + positionA.y;
+                    var positionB = target.parent.localToGlobal(0, 0);
+                    boundsB.x = boundsB.x + positionB.x;
+                    boundsB.y = boundsB.y + positionB.y;
+                    
+                }
+                // console.log(boundsA.y + " " + object.y);
+                // console.log(boundsB.y + " " + target.y);
                     
                 if(boundsA.x > boundsB.x + boundsB.width || boundsA.x + boundsA.width < boundsB.x || boundsA.y > boundsB.y + boundsB.height || boundsA.y + boundsA.height < boundsB.y) {
                     return false;
@@ -537,9 +543,12 @@
                 data: {
                     x: 22,
                     y: -178,
-                    // regX: 10,
-                    // regY: 10,
-                    rotation: 30
+                    regX: 123,
+                    regY: 89,
+                    scaleX: 1.2,
+                    scaleY: 1.2,
+                    // rotation: 90
+                    rotation: 180
                 }
             },{
                 // id: "rect",
@@ -598,13 +607,14 @@
         }];
 
         person.gotoAndPlay("run");
-        console.log(person.x, person.y, person.regX, person.regY);
-        console.log(person.getTransformedBounds());
-        console.log(person.localToGlobal(0, 0));
+        // console.log(person.x, person.y, person.regX, person.regY);
+        // console.log(person.getTransformedBounds());
+        // console.log(person.localToGlobal(0, 0));
+        // console.log(game.utils.hitTest(person, manData[0].object));
         person.addEventListener("tick", function() {
             // console.log(game.utils.hitTest(person, {y: 130}));
             // console.log(person.localToGlobal(0, 0));
-            // console.log(game.utils.hitTest(person, manData[0].object));
+            console.log(game.utils.hitTest(person, manData[0].object));
             for(var i = 0; i < manData.length; i++) {
                 if(!manData[i].animating && manData[i].object.y + iland.y <= person.y + person.getBounds().height) {
                     manData[i].animating = true;
