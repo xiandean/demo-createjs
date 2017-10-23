@@ -295,10 +295,7 @@
                     var positionB = target.parent.localToGlobal(0, 0);
                     boundsB.x = boundsB.x + positionB.x;
                     boundsB.y = boundsB.y + positionB.y;
-                    
                 }
-                // console.log(boundsA.y + " " + object.y);
-                // console.log(boundsB.y + " " + target.y);
                     
                 if(boundsA.x > boundsB.x + boundsB.width || boundsA.x + boundsA.width < boundsB.x || boundsA.y > boundsB.y + boundsB.height || boundsA.y + boundsA.height < boundsB.y) {
                     return false;
@@ -543,15 +540,10 @@
                 data: {
                     x: 22,
                     y: -178,
-                    regX: 123,
-                    regY: 89,
-                    scaleX: 1.2,
-                    scaleY: 1.2,
                     // rotation: 90
-                    rotation: 180
                 }
             },{
-                // id: "rect",
+                id: "rect",
                 type: "Shape",
                 parent: "txt_04_wrap",
                 shapeData: {
@@ -607,19 +599,17 @@
         }];
 
         person.gotoAndPlay("run");
-        // console.log(person.x, person.y, person.regX, person.regY);
-        // console.log(person.getTransformedBounds());
-        // console.log(person.localToGlobal(0, 0));
-        // console.log(game.utils.hitTest(person, manData[0].object));
+
+        // person.setBounds(0,0,10,10);
+        console.log(game.utils.hitTest(person, manData[0].object));
+
         person.addEventListener("tick", function() {
-            // console.log(game.utils.hitTest(person, {y: 130}));
-            // console.log(person.localToGlobal(0, 0));
-            console.log(game.utils.hitTest(person, manData[0].object));
+
             for(var i = 0; i < manData.length; i++) {
-                if(!manData[i].animating && manData[i].object.y + iland.y <= person.y + person.getBounds().height) {
+                if(!manData[i].animating && game.utils.hitTest(person, manData[i].object)) {
                     manData[i].animating = true;
                     manData[i].object.gotoAndPlay("jump");
-                }else if(manData[i].animating && !manData[i].stop && manData[i].object.y + iland.y <= -manData[i].object.getBounds().height) {
+                }else if(manData[i].animating && !manData[i].stop &&  manData[i].object.y + iland.y <= -manData[i].object.getBounds().height) {
                     manData[i].stop = true;
                     manData[i].object.gotoAndStop("jump");
                 }
