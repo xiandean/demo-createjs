@@ -24,17 +24,23 @@
 <canvas id="game"></canvas>
 <script>
     function Game(config) {
-        this.stage = new createjs.Stage(config.id);
+    	this.id = config.id;
         this.x = config.x ? config.x : 0;
         this.y = config.y ? config.y : 0;
         this.width = config.width ? config.width : window.innerWidth;
         this.height = config.height ? config.height : window.innerHeight;
+        this.showFPS = config.showFPS ? true : false;
+        this.sourceData = config.sourceData || "";
+        this.model = config.model || "";
+        this.controller = config.controller || "";
+        this.loadProgress = config.loadProgress || "";
+        this.paused = true;
+        this.stage = new createjs.Stage(this.id);
         this.stage.canvas.width = this.width;
         this.stage.canvas.height = this.height;
-        this.showFPS = config.showFPS ? true : false;
-        this.sourceData = config.sources || "";
-        this.loadProgress = config.loadProgress || "";
+        this.sources = "";
         this.objects = {};
+        this.score = 0;
     }
     Game.prototype = {
         constructor: Game,
@@ -56,24 +62,22 @@
             this.sources.loadManifest(this.sourceData);
         },
         init: function(param) {
-            if(param instanceof Function) {
-                var callback = param;
-            }else if(param) {
-                var model = param.model;
-                var controller = param.controller;
-                var callback = param.callback;
-            }
-            var _this = this;
-            this.paused = true;
-            this.stage.removeAllChildren();
-            this.objects = {};
-            if(!this.model && model) {
-                this.model = model;
-            }
-            if(!this.controller && controller) {
-                this.controller = controller;
-            }
-            createjs.Touch.enable(this.stage);
+            var _this = this; 
+            if(param) {
+            	if(param instanceof Function) {
+	                var callback = param;
+	            }else {
+	            	if(param.model) {
+	            		this.model = param.model;
+	            	}
+	            	if(param.controller) {
+	            		this.controller = param.controller;
+	            	}
+	            	if(param.callback) {
+	            		var callback = param.callback;
+	            	}
+	            }
+            }        
             if(!this.sources) {
                 this.preload(function(){
                     _this.render();
@@ -83,14 +87,12 @@
                 this.render();
                 callback && callback();
             }
+            createjs.Touch.enable(this.stage);
         },
         render: function() {
             if(this.model) {
-                for(var i = 0; i < this.model.length; i++) {
-                    this.addObject(this.model[i]);
-                }
+                this.addObjects(this.model);
             }
-            
             if(this.controller) {
                 this.controller();
             }
@@ -99,11 +101,12 @@
             }
             this.stage.update();
         },
-        addObject: function(objectData) {
+        addObject: function(objectData, parent) {
             var id = objectData.id;
-            var parent = this.objects[objectData.parent] || this.stage;
+            var type = objectData.type;
+            var object = "";
             if(objectData.object){
-                this.objects[id] = objectData.object;
+                object = objectData.object;
             }else if(objectData.spriteData){
                 var spriteData = {};
                 spriteData.images = [];
@@ -114,9 +117,9 @@
                 spriteData.animations = objectData.spriteData.animations;
        
                 var spriteSheet = new createjs.SpriteSheet(spriteData);
-                this.objects[id] = new createjs.Sprite(spriteSheet);
+                object = new createjs.Sprite(spriteSheet);
             }else if(objectData.shapeData){
-                this.objects[id] = new createjs.Shape();
+                object = new createjs.Shape();
                 for(var method in objectData.shapeData) {
                     var param = objectData.shapeData[method]; 
                     var arr = [];
@@ -125,26 +128,54 @@
                     }else {
                         arr.push(param);
                     }
-                    this.objects[id].graphics[method].apply(this.objects[id].graphics, arr);
+                    object.graphics[method].apply(object.graphics, arr);
                 }
             }else if(objectData.textData){
-                this.objects[id] = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
+                object = new createjs.Text(objectData.textData.text, objectData.textData.font, objectData.textData.color);
+            }else if(objectData.image){
+                var image = this.sources.getResult(objectData.image);
+                object = new createjs.Bitmap(image);
             }else {
-                var image = objectData.image || this.sources.getResult(id);
-                if(image) {
-                    this.objects[id] = new createjs.Bitmap(image);
-                }else {
-                    this.objects[id] = new createjs.Container();
-                }
-                
+                object = new createjs.Container();
             }
             if(objectData.data) {
                 for(var key in objectData.data) {
-                    this.objects[id][key] = objectData.data[key];
+                    object[key] = objectData.data[key];
                 }
             }
-            parent.addChild(this.objects[id]);
+
+        	
+        	object.objectId = id;
+        	if(type) {
+        		object.type = type;
+        	}
+            if(parent) {
+                parent.addChild(object);
+            }else if(objectData.parent || typeof objectData.parent == "undefined") {
+        		var parent =  this.objects[objectData.parent] || this.stage;
+        		parent.addChild(object);
+        	}           
+
+            if(objectData.children) {
+                for(var i = 0; i < objectData.children.length; i++) {
+                    var child = objectData.children[i];
+                    // child.parent = id;
+                    this.addObject(child, object);
+                }
+            }
+            if(id) {
+                this.objects[id] = object;
+            }
+            
+            return object;
         },  
+        addObjects: function(objectDataArr) {
+            var objects = [];
+            for(var i = 0; i < objectDataArr.length; i++) {
+                objects.push(this.addObject(objectDataArr[i]));
+            }
+            return objects;
+        },
         getBounds: function() {
             return {x: this.x, y: this.y, width: this.width, height: this.height}
         },
@@ -156,9 +187,6 @@
             createjs.Ticker.addEventListener("tick", this._handleTick = function(event) {
                 if(!_this.paused) {
                     _this.stage.update();
-                }
-                if(_this.showFPS) {
-                    _this.fpstext.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
                 }
             });
         },
@@ -172,202 +200,333 @@
             this.paused = true;
             createjs.Ticker.removeEventListener("tick", this._handleTick);
         },
+        reset: function() {
+        	this.stage.removeAllChildren();
+            this.objects = {};
+            this.score = 0;
+        },
         restart: function() {
             this.stop();
+            this.reset();
             this.init();
             this.start();
         },
         setFPS: function() {
-            this.fpstext = new createjs.Text("","20px Arial","#f00");
-            this.fpstext.x = 0;
-            this.fpstext.y = this.height - 24;
-            this.stage.addChild(this.fpstext);
+            var _this = this;
+            this._fpsText = this.addObject({
+                id: "fpsText",
+                type: "Text",
+                textData: {
+                    text: "",
+                    font: "Bold 20px Arial",
+                    color: "#f00"
+                },
+                data: {
+                    x: 0,
+                    y: this.height - 24
+                }
+            });
+            this._fpsText.addEventListener("tick", function() {
+                _this._fpsText.text = Math.round(createjs.Ticker.getMeasuredFPS()) + "fps";
+            });
+        },
+        utils: {
+            consoleLog: function(object) {
+                var result = {};
+                var object = object;
+                if(!object) {
+                    return object;
+                }
+                loop(object, result);
+                function loop(object, result) {
+                    result.id = object.objectId || object.id || "stage";
+                    if(object.type) {
+                        result.type = object.type;
+                    }
+                    result.x = object.x;
+                    result.y = object.y;
+                    result.regX = object.regX;
+                    result.regY = object.regY;
+                    result.scaleX = object.scaleX;
+                    result.scaleY = object.scaleY;
+                    result.rotation = object.rotation;
+                    result.alpha = object.alpha;
+                    result.visible = object.visible;
+                    if(object.parent) {
+                        result.parent = object.parent.objectId || object.parent.id || "stage";
+                    }
+                    if(object.getTransformedBounds()) {
+                        result.width = object.getTransformedBounds().width;
+                        result.height = object.getTransformedBounds().height;
+                    }
+                    console.group(result.id + "：");
+                    console.dir(result);
+                    var children = object.children;
+                    if(children) {
+                        result.children = [];
+                        for(var i = 0; i < children.length; i++) {
+                            var child = children[i];
+                            result.children[i] = {};
+                            loop(child, result.children[i]);
+                        }
+                    }
+                    console.groupEnd();
+                }
+                return result;
+            },
+            hitTest: function(object, target) {
+
+                if(object.getTransformedBounds) {
+                    var boundsA = object.getTransformedBounds();
+                }else {
+                    var boundsA = {x: object.x, y: object.y, width: object.width || 0, height: object.height || 0};
+                }
+
+                if(target.getTransformedBounds) {
+                    var boundsB = target.getTransformedBounds();
+                }else {
+                    var boundsB = {x: target.x, y: target.y, width: target.width || 0, height: target.height || 0};
+                }
+
+                if(object.parent && target.parent && object.parent != target.parent) {
+                    var positionA  = object.parent.localToGlobal(0, 0);
+                    boundsA.x = boundsA.x + positionA.x;
+                    boundsA.y = boundsA.y + positionA.y;
+                    var positionB = target.parent.localToGlobal(0, 0);
+                    boundsB.x = boundsB.x + positionB.x;
+                    boundsB.y = boundsB.y + positionB.y;
+                }
+                    
+                if(boundsA.x > boundsB.x + boundsB.width || boundsA.x + boundsA.width < boundsB.x || boundsA.y > boundsB.y + boundsB.height || boundsA.y + boundsA.height < boundsB.y) {
+                    return false;
+                }else {
+                    return true;
+                }
+            },
+            getRandom: function(a,b){
+                return Math.floor(Math.random()*(b-a)+a);
+            }
         }
     };
 
-    function MyGame(config) {
-        this.Game_constructor(config);
-        this.sourceData = [
-            {src: "images/sec_dean_sky.png", id: "bg_sky"},
-            {src: "images/sec_dean_star.png", id: "bg_star"},
-            {src: "images/sec_dean_logo.png", id: "title"},
-            {src: "images/sec_dean_mountain.png", id: "mountain"},
-            {src: "images/sec_dean_light_01.png", id: "light_01"},
-            {src: "images/sec_dean_light_02.png", id: "light_02"},
-            {src: "images/sec_dean_light_03.png", id: "light_03"},
-            {src: "images/sec_dean_light_04.png", id: "light_04"},
-            {src: "images/sec_dean_light.png", id: "light"},
-            {src: "images/sec_dean_person_sprite.png", id: "person"},
-            {src: "images/sec_dean_txt_01.png", id: "txt_01"},
-            {src: "images/sec_dean_txt_02.png", id: "txt_02"},
-            {src: "images/sec_dean_txt_03.png", id: "txt_03"},
-            {src: "images/sec_dean_txt_04.png", id: "txt_04"},
-            {src: "images/sec_dean_txt_04_heard.png", id: "txt_04_heard"},
-            {src: "images/sec_dean_txt_05.png", id: "txt_05"},
-            {src: "images/sec_dean_txt_06.png", id: "txt_06"},
-            {src: "images/sec_dean_man_01_sprite.png", id: "man_01"},
-            {src: "images/sec_dean_man_02_sprite.png", id: "man_02"},
-            {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
-        ];
-        this.model = [
+    var game = new Game({
+        id: 'game',
+        showFPS: true
+    });
+    game.sourceData = [
+        {src: "images/sec_dean_sky.png", id: "bg_sky"},
+        {src: "images/sec_dean_star.png", id: "bg_star"},
+        {src: "images/sec_dean_logo.png", id: "title"},
+        {src: "images/sec_dean_mountain.png", id: "mountain"},
+        {src: "images/sec_dean_light_01.png", id: "light_01"},
+        {src: "images/sec_dean_light_02.png", id: "light_02"},
+        {src: "images/sec_dean_light_03.png", id: "light_03"},
+        {src: "images/sec_dean_light_04.png", id: "light_04"},
+        {src: "images/sec_dean_light.png", id: "light"},
+        {src: "images/sec_dean_person_sprite.png", id: "person"},
+        {src: "images/sec_dean_txt_01.png", id: "txt_01"},
+        {src: "images/sec_dean_txt_02.png", id: "txt_02"},
+        {src: "images/sec_dean_txt_03.png", id: "txt_03"},
+        {src: "images/sec_dean_txt_04.png", id: "txt_04"},
+        {src: "images/sec_dean_txt_04_heard.png", id: "txt_04_heard"},
+        {src: "images/sec_dean_txt_05.png", id: "txt_05"},
+        {src: "images/sec_dean_txt_06.png", id: "txt_06"},
+        {src: "images/sec_dean_man_01_sprite.png", id: "man_01"},
+        {src: "images/sec_dean_man_02_sprite.png", id: "man_02"},
+        {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
+    ];
+    game.preload(function() {
+    	game.init(function() {
+            // console.dir(game.objects);
+            game.utils.consoleLog(game.stage);
+    		game.start();
+    	});
+    });
+	game.controller = function() {
+        var _this = this;
+        var model = [
             {
-                id: "bg"
-            },{
-                id: "bg_sky",
-                parent: "bg"
-            },{
-                id: "bg_star",
-                parent: "bg",
-                data: {
-                    x: 437
-                }
-            },{
-                id: "iland"
-            },{
-                id: "mountain",
-                parent: "iland"
-            },{
-                id: "light_01",
-                parent: "iland",
-                data: {
-                    x: 422,
-                    y: 272
-                }
-            },{
-                id: "light_02",
-                parent: "iland",
-                data: {
-                    x: 422,
-                    y: 818
-                }
-            },{
-                id: "light_03",
-                parent: "iland",
-                data: {
-                    x: 417,
-                    y: 1443
-                }
-            },{
-                id: "light_04",
-                parent: "iland",
-                data: {
-                    x: 422,
-                    y: 2008
-                }
-            },{
-                id: "light",
-                parent: "iland"
-            },{
-                id: "txt_01",
-                parent: "iland",
-                data: {
-                    x: 545,
-                    y: 38
-                }
-            },{
-                id: "txt_02",
-                parent: "iland",
-                data: {
-                    x: 490,
-                    y: 620
-                }
-            },{
-                id: "txt_03",
-                parent: "iland",
-                data: {
-                    x: 584,
-                    y: 909
-                }
-            },{
-                id: "txt_04_wrap",
-                parent: "iland",
-                data: {
-                    x: 478,
-                    y: 1228
-                }
-            },{
-                id: "txt_04",
-                parent: "txt_04_wrap"
-            },{
-                id: "txt_04_heard",
-                parent: "txt_04_wrap",
-                data: {
-                    x: 12,
-                    y: 25
-                }
-            },{
-                id: "txt_05",
-                parent: "iland",
-                data: {
-                    x: 529,
-                    y: 1820
-                }
-            },{
-                id: "txt_06",
-                parent: "iland",
-                data: {
-                    x: 512,
-                    y: 2179
-                }
-            },{
-                id: "man_01",
-                parent: "iland",
-                spriteData: {
-                    images: ["man_01"],
-                    frames: {
-                        width: 245.25,
-                        height: 200
-                    },
-                    animations: {
-                        jump: [0, 7, "jump", 0.15]
+                id: "bg",
+                type: "Container",
+                // parent: null,
+                children: [{
+                    id: "bg_sky",
+                    image: "bg_sky",
+                    type: "Bitmap"
+                },{
+                    id: "bg_star",
+                    image: "bg_star",
+                    type: "Bitmap",
+                    data: {
+                        x: 437
                     }
-                },
-                data: {
-                    x: 99,
-                    y: 718
-                }
+                }]
             },{
-                id: "man_02",
-                parent: "iland",
-                spriteData: {
-                    images: ["man_02"],
-                    frames: {
-                        width: 257.5,
-                        height: 210
-                    },
-                    animations: {
-                        jump: [0, 7, "jump", 0.15]
+                id: "iland",
+                type: "Container",
+                children: [{
+                    id: "mountain",
+                    image: "mountain",
+                    type: "Bitmap"
+                },{
+                    id: "light_01",
+                    image: "light_01",
+                    type: "Bitmap",
+                    data: {
+                        x: 422,
+                        y: 272
                     }
-                },
-                data: {
-                    x: 99,
-                    y: 1228
-                }
-            },{
-                id: "man_03",
-                parent: "iland",
-                spriteData: {
-                    images: ["man_03"],
-                    frames: {
-                        width: 261.125,
-                        height: 213
-                    },
-                    animations: {
-                        jump: [0, 7, "jump", 0.15]
+                },{
+                    id: "light_02",
+                    image: "light_02",
+                    type: "Bitmap",
+                    data: {
+                        x: 422,
+                        y: 818
                     }
-                },
-                data: {
-                    x: 95,
-                    y: 1889
-                }
+                },{
+                    id: "light_03",
+                    image: "light_03",
+                    type: "Bitmap",
+                    data: {
+                        x: 417,
+                        y: 1443
+                    }
+                },{
+                    id: "light_04",
+                    image: "light_04",
+                    type: "Bitmap",
+                    data: {
+                        x: 422,
+                        y: 2008
+                    }
+                },{
+                    id: "light",
+                    image: "light",
+                    type: "Bitmap",
+                },{
+                    id: "txt_01",
+                    image: "txt_01",
+                    type: "Bitmap",
+                    data: {
+                        x: 545,
+                        y: 38
+                    }
+                },{
+                    id: "txt_02",
+                    image: "txt_02",
+                    type: "Bitmap",
+                    data: {
+                        x: 490,
+                        y: 620
+                    }
+                },{
+                    id: "txt_03",
+                    image: "txt_03",
+                    type: "Bitmap",
+                    data: {
+                        x: 584,
+                        y: 909
+                    }
+                },{
+                    id: "txt_04_wrap",
+                    type: "Container",
+                    data: {
+                        x: 478,
+                        y: 1228
+                    },
+                    children: [{
+                        id: "txt_04",
+                        image: "txt_04",
+                        type: "Bitmap"
+                    },{
+                        id: "txt_04_heard",
+                        image: "txt_04_heard",
+                        type: "Bitmap",
+                        data: {
+                            x: 12,
+                            y: 25
+                        }
+                    }]
+                },{
+                    id: "txt_05",
+                    image: "txt_05",
+                    type: "Bitmap",
+                    data: {
+                        x: 529,
+                        y: 1820
+                    }
+                },{
+                    id: "txt_06",
+                    image: "txt_06",
+                    type: "Bitmap",
+                    data: {
+                        x: 512,
+                        y: 2179
+                    }
+                },{
+                    id: "man_01",
+                    type: "Sprite",
+                    spriteData: {
+                        images: ["man_01"],
+                        frames: {
+                            width: 245.25,
+                            height: 200
+                        },
+                        animations: {
+                            jump: [0, 7, "jump", 0.15]
+                        }
+                    },
+                    data: {
+                        x: 99,
+                        y: 718
+                    }
+                },{
+                    id: "man_02",
+                    type: "Sprite",
+                    spriteData: {
+                        images: ["man_02"],
+                        frames: {
+                            width: 257.5,
+                            height: 210
+                        },
+                        animations: {
+                            jump: [0, 7, "jump", 0.15]
+                        }
+                    },
+                    data: {
+                        x: 99,
+                        y: 1228
+                    }
+                },{
+                    id: "man_03",
+                    type: "Sprite",
+                    spriteData: {
+                        images: ["man_03"],
+                        frames: {
+                            width: 261.125,
+                            height: 213
+                        },
+                        animations: {
+                            jump: [0, 7, "jump", 0.15]
+                        }
+                    },
+                    data: {
+                        x: 95,
+                        y: 1889
+                    }
+                }]
             },{
                 id: "title",
+                image: "title",
+                type: "Bitmap",
                 data: {
                     x: 658,
                     y: 44
                 }
             },{
                 id: "person",
+                type: "Sprite",
                 spriteData: {
                     images: ["person"],
                     frames: {
@@ -380,10 +539,13 @@
                 },
                 data: {
                     x: 22,
-                    y: -178
+                    y: -178,
+                    // rotation: 90
                 }
             },{
                 id: "rect",
+                type: "Shape",
+                parent: "txt_04_wrap",
                 shapeData: {
                     beginStroke: "#f00",
                     drawRect: [0, 0, 48, 24]
@@ -394,10 +556,31 @@
                 }
             }
         ];
-    }
-    createjs.extend(MyGame, Game);
-    MyGame.prototype.controller = function() {
-        var _this = this;
+        this.addObjects(model);
+        this.pool = {
+            txts: []
+        }; 
+
+        var txtsImages = ["txt_01", "txt_02", "txt_03"];
+        txtsImages.forEach(function(item, index) {
+            var txtTemplate = _this.addObject({
+                parent: null,
+                image: item,
+                type: "Bitmap"
+            });
+
+            var txtsData = [];
+            for(var i = 0; i < 10; i++) {
+                txtsData.push({
+                    parent: null,
+                    object: txtTemplate.clone()
+                });
+            }
+            _this.pool.txts.push(_this.addObjects(txtsData));
+
+        }); 
+
+
         var person = this.objects.person;
         var iland = this.objects.iland;
         var iland_desY = window.innerHeight - iland.getBounds().height;
@@ -416,12 +599,17 @@
         }];
 
         person.gotoAndPlay("run");
+
+        // person.setBounds(0,0,10,10);
+        console.log(game.utils.hitTest(person, manData[0].object));
+
         person.addEventListener("tick", function() {
+
             for(var i = 0; i < manData.length; i++) {
-                if(!manData[i].animating && manData[i].object.y + iland.y <= person.y + person.getBounds().height) {
+                if(!manData[i].animating && game.utils.hitTest(person, manData[i].object)) {
                     manData[i].animating = true;
                     manData[i].object.gotoAndPlay("jump");
-                }else if(manData[i].animating && !manData[i].stop && manData[i].object.y + iland.y <= -manData[i].object.getBounds().height) {
+                }else if(manData[i].animating && !manData[i].stop &&  manData[i].object.y + iland.y <= -manData[i].object.getBounds().height) {
                     manData[i].stop = true;
                     manData[i].object.gotoAndStop("jump");
                 }
@@ -438,20 +626,7 @@
                 _this.restart();
             }
         });
-    }
-    MyGame = createjs.promote(MyGame, "Game");
-    
-    var gameConfig = {
-        id: 'game',
-        width: 750,
-        height: 1334,
-        showFPS: true
-    };
-    var game = new MyGame(gameConfig);
-
-    game.init(function() {
-        game.start();
-    });
+	}
     
 </script>
 </body>
