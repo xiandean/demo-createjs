@@ -23,8 +23,10 @@
 <body>
 <canvas id="game"></canvas>
 <script>
+
+var app = (function(app) {
     function Game(config) {
-    	this.id = config.id;
+        this.id = config.id;
         this.x = config.x ? config.x : 0;
         this.y = config.y ? config.y : 0;
         this.width = config.width ? config.width : window.innerWidth;
@@ -64,19 +66,19 @@
         init: function(param) {
             var _this = this; 
             if(param) {
-            	if(param instanceof Function) {
-	                var callback = param;
-	            }else {
-	            	if(param.model) {
-	            		this.model = param.model;
-	            	}
-	            	if(param.controller) {
-	            		this.controller = param.controller;
-	            	}
-	            	if(param.callback) {
-	            		var callback = param.callback;
-	            	}
-	            }
+                if(param instanceof Function) {
+                    var callback = param;
+                }else {
+                    if(param.model) {
+                        this.model = param.model;
+                    }
+                    if(param.controller) {
+                        this.controller = param.controller;
+                    }
+                    if(param.callback) {
+                        var callback = param.callback;
+                    }
+                }
             }        
             if(!this.sources) {
                 this.preload(function(){
@@ -144,17 +146,17 @@
                 }
             }
 
-        	
-        	object.objectId = id;
-        	if(type) {
-        		object.type = type;
-        	}
+            
+            object.objectId = id;
+            if(type) {
+                object.type = type;
+            }
             if(parent) {
                 parent.addChild(object);
             }else if(objectData.parent || typeof objectData.parent == "undefined") {
-        		var parent =  this.objects[objectData.parent] || this.stage;
-        		parent.addChild(object);
-        	}           
+                var parent =  this.objects[objectData.parent] || this.stage;
+                parent.addChild(object);
+            }           
 
             if(objectData.children) {
                 for(var i = 0; i < objectData.children.length; i++) {
@@ -201,7 +203,7 @@
             createjs.Ticker.removeEventListener("tick", this._handleTick);
         },
         reset: function() {
-        	this.stage.removeAllChildren();
+            this.stage.removeAllChildren();
             this.objects = {};
             this.score = 0;
         },
@@ -274,7 +276,7 @@
                 }
                 return result;
             },
-            hitTest: function(object, target) {
+            hitTest: function(object, target, localToGlobal) { //localToGlobal: true/false 是否需要转换成同一层次
 
                 if(object.getTransformedBounds) {
                     var boundsA = object.getTransformedBounds();
@@ -288,13 +290,18 @@
                     var boundsB = {x: target.x, y: target.y, width: target.width || 0, height: target.height || 0};
                 }
 
-                if(object.parent && target.parent && object.parent != target.parent) {
-                    var positionA  = object.parent.localToGlobal(0, 0);
-                    boundsA.x = boundsA.x + positionA.x;
-                    boundsA.y = boundsA.y + positionA.y;
-                    var positionB = target.parent.localToGlobal(0, 0);
-                    boundsB.x = boundsB.x + positionB.x;
-                    boundsB.y = boundsB.y + positionB.y;
+                // if(object.parent && target.parent && object.parent != target.parent) {
+                if(localToGlobal) {
+                    if(object.parent) {
+                        var positionA  = object.parent.localToGlobal(0, 0);
+                        boundsA.x = boundsA.x + positionA.x;
+                        boundsA.y = boundsA.y + positionA.y;
+                    }
+                    if(target.parent) {
+                        var positionB = target.parent.localToGlobal(0, 0);
+                        boundsB.x = boundsB.x + positionB.x;
+                        boundsB.y = boundsB.y + positionB.y;
+                    }
                 }
                     
                 if(boundsA.x > boundsB.x + boundsB.width || boundsA.x + boundsA.width < boundsB.x || boundsA.y > boundsB.y + boundsB.height || boundsA.y + boundsA.height < boundsB.y) {
@@ -302,6 +309,14 @@
                 }else {
                     return true;
                 }
+            },
+            getRandomByArray: function(array, isRemove) {
+                var index = this.getRandom(0, array.length);
+                var result = array[index];
+                if(isRemove) {
+                    array.splice(index, 1);
+                }
+                return result;
             },
             getRandom: function(a,b){
                 return Math.floor(Math.random()*(b-a)+a);
@@ -335,14 +350,14 @@
         {src: "images/sec_dean_man_02_sprite.png", id: "man_02"},
         {src: "images/sec_dean_man_03_sprite.png", id: "man_03"}
     ];
-    game.preload(function() {
-    	game.init(function() {
-            // console.dir(game.objects);
-            game.utils.consoleLog(game.stage);
-    		game.start();
-    	});
-    });
-	game.controller = function() {
+    // game.preload(function() {
+    //     game.init(function() {
+    //         // console.dir(game.objects);
+    //         game.utils.consoleLog(game.stage);
+    //         game.start();
+    //     });
+    // });
+    game.controller = function() {
         var _this = this;
         var model = [
             {
@@ -601,12 +616,12 @@
         person.gotoAndPlay("run");
 
         // person.setBounds(0,0,10,10);
-        console.log(game.utils.hitTest(person, manData[0].object));
+        console.log(game.utils.hitTest(person, manData[0].object, true));
 
         person.addEventListener("tick", function() {
 
             for(var i = 0; i < manData.length; i++) {
-                if(!manData[i].animating && game.utils.hitTest(person, manData[i].object)) {
+                if(!manData[i].animating && game.utils.hitTest(person, manData[i].object, true)) {
                     manData[i].animating = true;
                     manData[i].object.gotoAndPlay("jump");
                 }else if(manData[i].animating && !manData[i].stop &&  manData[i].object.y + iland.y <= -manData[i].object.getBounds().height) {
@@ -626,8 +641,35 @@
                 _this.restart();
             }
         });
-	}
+    }
+
+    app.game = {
+        preload: function(callback) {
+            game.preload(callback);
+        },
+        init: function(param) {
+            game.init(param);
+        },
+        start: function() {
+            game.start();
+        },
+        stop: function() {
+            game.stop();
+        }
+    }
+
+    return app;
+
+}(window.app || {}));
     
+
+app.game.preload(function() {
+    app.game.init(function() {
+        // console.dir(game.objects);
+        // app.game.utils.consoleLog(game.stage);
+        app.game.start();
+    });
+});
 </script>
 </body>
 </html>
